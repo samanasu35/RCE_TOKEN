@@ -24,6 +24,7 @@ contract RCEToken {
         _decimals = 9;
         _totalSupply = (10 ** _decimals) * (10**_decimals);
         _owner = msg.sender;
+        _tokenPrice = 10**17;
         balances[address(this)] = _totalSupply;
     }
 
@@ -92,7 +93,7 @@ contract RCEToken {
     //token fiyatını değiştirebilecek fonksiyon
     function changeTokenPrice(uint256 price) external onlyOwner
     {
-        _contratPrice = price;
+        _tokenPrice = price;
     }
 
     //kontratın fiyatını değiştirebilecek fonksiyon

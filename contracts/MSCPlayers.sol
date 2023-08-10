@@ -15,6 +15,7 @@ contract MSCPlayers {
     string private _symbol;
     uint256 private trainingPrice;
     uint256 private abilityPrice;
+    uint256 private mintPrice;
     mapping(uint256 => address) private _tokenOwners; //tokenID => address
     mapping(address => uint256[]) private _ownerToken; //address => tokenID
     mapping(address => uint256) private _balances; //address => ship count
@@ -58,6 +59,7 @@ contract MSCPlayers {
         //priceses
         trainingPrice = 10**9;
         abilityPrice = 10**9;
+        mintPrice = 10 * (10**9);
 
         // Ülkeler
         _countries[0] = "Turkey";
@@ -327,6 +329,10 @@ contract MSCPlayers {
 
     function setAbilityPrice(uint256 newPrice) external onlyOwner {
         abilityPrice = newPrice;
+    }
+
+    function setMintPrice(uint256 newPrice) external onlyOwner {
+        mintPrice = newPrice;
     }
 
     function setPositionValues( uint8 positionType, uint8[] memory values, uint8[] memory valuesMax) external onlyOwner {
