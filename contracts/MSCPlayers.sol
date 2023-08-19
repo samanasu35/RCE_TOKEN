@@ -295,21 +295,6 @@ contract MSCPlayers {
         SpendRCET(100*(10**9));
 
         uint256 tokenId = _tokenIdCounter;
-        // _soccerPlayers[tokenId].country = countryCode;
-        // _soccerPlayers[tokenId].year = iMSCL.getYear();
-        // _soccerPlayers[tokenId].number = number;
-        // _soccerPlayers[tokenId].creator = msg.sender;
-        // _soccerPlayers[tokenId].playerName = playerName;
-        // _soccerPlayers[tokenId].positionType = positionType;
-        // _soccerPlayers[tokenId].SPD = defaults[positionType].SPD;
-        // _soccerPlayers[tokenId].DRI = defaults[positionType].DRI;
-        // _soccerPlayers[tokenId].PAS = defaults[positionType].PAS;
-        // _soccerPlayers[tokenId].SHO = defaults[positionType].SHO;
-        // _soccerPlayers[tokenId].STR = defaults[positionType].STR;
-        // _soccerPlayers[tokenId].DEF = defaults[positionType].DEF;
-        // uint8[] storage pAbilities = _soccerPlayers[tokenId].abilities;
-        // pAbilities.push(0);
-        // pAbilities.push(0);
         _soccerPlayers[tokenId] = playerValues({
             trainingBeginDate: 0,
             training :0,
