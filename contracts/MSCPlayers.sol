@@ -4,28 +4,46 @@ pragma solidity ^0.8.0;
 interface RCETInterface {
     function balanceOf(address account) external view returns (uint256);
     function spend(address from, uint256 value) external returns (bool);
+    function earn(address to, uint256 value) external returns (bool);
     function isAllowanceContract(address contractAddress) external view returns(bool);
 }
+
+interface MSCLInterface {
+    function getYear() external view returns (uint16);
+    function getWeek() external view returns (uint8);
+}
+
+interface MSCCInterface {
+    function isHasOffer(uint256 player, uint256 club, uint256 index) external view returns(bool);
+    function acceptOffer(uint256 player, address owner, uint256 club, uint256 index) external returns(bool);
+    function rejectOffer(uint256 player, uint256 club, uint256 index) external returns(bool);
+    function isFull(uint256 club) external  view returns(bool);
+}
+
+
 contract MSCPlayers {
 
     RCETInterface iRCET;
+    MSCLInterface iMSCL;
+    MSCCInterface iMSCC;
 
-    uint256 private year = 2023;
     string private _name;
     string private _symbol;
     uint256 private trainingPrice;
     uint256 private abilityPrice;
     uint256 private mintPrice;
-    mapping(uint256 => address) private _tokenOwners; //tokenID => address
-    mapping(address => uint256[]) private _ownerToken; //address => tokenID
-    mapping(address => uint256) private _balances; //address => ship count
-    mapping(uint256 => playerValues)  private _soccerPlayers; //tokenID => ship values
+    mapping(uint256 => address) private _tokenOwner; //tokenID => address
+    mapping(uint256 => uint256) private _playerTokenPrice; //tokenID => address
+    mapping(uint256 => uint256) private _playerEthPrice; //tokenID => address
+    mapping(address => uint256[]) private _ownerTokens; //address => tokenID
+    mapping(address => uint256) private _balances; //address => player count
+    mapping(uint256 => playerValues)  private _soccerPlayers; //tokenID => player values
     mapping(string => uint256) private _playerNames; //playerNames => tokenID
     mapping(uint256 => string) private positionTypes;
     mapping(uint256 => mapping(uint256 => string)) private abilities;
-    mapping(uint8 => string) private _countries;
     mapping(uint256 => playerValues) private defaults;
     mapping(uint256 => playerValues) private maxs;
+    mapping(uint8 => uint256[]) private countryPlayer;
 
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
 
@@ -48,6 +66,16 @@ contract MSCPlayers {
         uint8 DEF;
         uint8 number;
         uint8[] abilities;
+
+        uint256[] oldClubs;
+        uint256 club;
+        string clubName;
+        uint256 transferValue;
+        uint16 transferYear;
+        uint256 currentValue;
+
+        uint16 matchCounter;
+        uint16 goalCounter;
     }
 
 
@@ -61,57 +89,6 @@ contract MSCPlayers {
         abilityPrice = 10**9;
         mintPrice = 10 * (10**9);
 
-        // Ülkeler
-        _countries[0] = "Turkey";
-        _countries[1] = "United States";
-        _countries[2] = "China";
-        _countries[3] = "Russia";
-        _countries[4] = "Germany";
-        _countries[5] = "United Kingdom";
-        _countries[6] = "Japan";
-        _countries[7] = "India";
-        _countries[8] = "France";
-        _countries[9] = "Brazil";
-        _countries[10] = "Italy";
-        _countries[11] = "Canada";
-        _countries[12] = "Australia";
-        _countries[13] = "South Korea";
-        _countries[14] = "Spain";
-        _countries[15] = "Mexico";
-        _countries[16] = "Indonesia";
-        _countries[17] = "Netherlands";
-        _countries[18] = "Saudi Arabia";
-        _countries[19] = "Switzerland";
-        _countries[20] = "Sweden";
-        _countries[21] = "Belgium";
-        _countries[22] = "Argentina";
-        _countries[23] = "Norway";
-        _countries[24] = "Austria";
-        _countries[25] = "United Arab Emirates";
-        _countries[26] = "Poland";
-        _countries[27] = "Thailand";
-        _countries[28] = "Iran";
-        _countries[29] = "Israel";
-        _countries[30] = "Greece";
-        _countries[31] = "Singapore";
-        _countries[32] = "Ukraine";
-        _countries[33] = "Egypt";
-        _countries[34] = "South Africa";
-        _countries[35] = "Denmark";
-        _countries[36] = "Malaysia";
-        _countries[37] = "Colombia";
-        _countries[38] = "Philippines";
-        _countries[39] = "Finland";
-        _countries[40] = "Chile";
-        _countries[41] = "Iraq";
-        _countries[42] = "Czech Republic";
-        _countries[43] = "Romania";
-        _countries[44] = "Portugal";
-        _countries[45] = "Vietnam";
-        _countries[46] = "Peru";
-        _countries[47] = "Qatar";
-        _countries[48] = "Kazakhstan";
-        _countries[49] = "Hungary";
 
         // Pozisyon isimlerini dolduruyoruz
         positionTypes[0] ="Goalkeeper"; //kaleci (GK)
@@ -122,18 +99,19 @@ contract MSCPlayers {
         positionTypes[5] =" Forward"; //forvet  (F L, F R, F C) 
 
         // yetenek isimleri
-        abilities[0][0] = "Diving";
-        abilities[0][1] = "Handling";
-        abilities[1][0] = "Tackling";
-        abilities[1][1] = "Marking";
-        abilities[2][0] = "Interceptio";
-        abilities[2][1] = "Positioning";
-        abilities[3][0] = "Passing Vision";
-        abilities[3][1] = "Ball Recovery";
-        abilities[4][0] = "Playmaking";
-        abilities[4][1] = "Creative Dribble";
-        abilities[5][0] = "Finishing";
-        abilities[5][1] = "Aerial Ability";
+        abilities[0][0] = "Diving";                 // Kaleci: Atlama
+        abilities[0][1] = "Handling";               // Kaleci: Top Tutma
+        abilities[1][0] = "Tackling";               // Defans: Müdahale
+        abilities[1][1] = "Marking";                // Defans: Adam Takip
+        abilities[2][0] = "Interception";           // Orta Saha: Top Kapma
+        abilities[2][1] = "Positioning";            // Orta Saha: Pozisyon Alma
+        abilities[3][0] = "Passing Vision";         // Orta Saha: Pas Görüşü
+        abilities[3][1] = "Ball Recovery";          // Orta Saha: Top Çalma
+        abilities[4][0] = "Playmaking";             // Orta Saha: Oyun Kurma
+        abilities[4][1] = "Creative Dribble";       // Orta Saha: Yaratıcı Dribbling
+        abilities[5][0] = "Aerial Ability";         // Forvet: Havada Topa Hakimiyet
+        abilities[5][1] = "Finishing";              // Forvet: Bitiricilik
+
 
         defaults[0].positionType = 0;                  defaults[1].positionType = 1;                  defaults[2].positionType = 2;
         defaults[3].positionType = 3;                  defaults[4].positionType = 4;                  defaults[5].positionType = 5;
@@ -154,22 +132,23 @@ contract MSCPlayers {
 
     }
 
-    function setInterfaces(address RCET) external onlyOwner
+    function setInterfaces(address RCET, address MSCL) external onlyOwner
     {
         iRCET = RCETInterface(RCET);
+        iMSCL = MSCLInterface(MSCL);
     }
 
     function sendTraining(uint256 tokenId, uint8 skill) external
     {
-        require(_tokenOwners[tokenId] == msg.sender, "This player is not your!");
-        require(skill > 0 && skill < 7, "skill must between 1-6");
-        require(skill == 1 && _soccerPlayers[tokenId].SPD < maxs[_soccerPlayers[tokenId].positionType].SPD, "SPD skill cannot be developed further.");
-        require(skill == 2 && _soccerPlayers[tokenId].DRI < maxs[_soccerPlayers[tokenId].positionType].DRI, "DRI skill cannot be developed further.");
-        require(skill == 3 && _soccerPlayers[tokenId].PAS < maxs[_soccerPlayers[tokenId].positionType].PAS, "PAS skill cannot be developed further.");
-        require(skill == 4 && _soccerPlayers[tokenId].SHO < maxs[_soccerPlayers[tokenId].positionType].SHO, "SHO skill cannot be developed further.");
-        require(skill == 5 && _soccerPlayers[tokenId].STR < maxs[_soccerPlayers[tokenId].positionType].STR, "STR skill cannot be developed further.");
-        require(skill == 6 && _soccerPlayers[tokenId].DEF < maxs[_soccerPlayers[tokenId].positionType].DEF, "DEF skill cannot be developed further.");
-        require(_soccerPlayers[tokenId].training == 0,"your player already in training");
+        require(_tokenOwner[tokenId] == msg.sender); //, "This player is not your!");
+        require(skill > 0 && skill < 7); //, "skill must between 1-6");
+        require(skill == 1 && _soccerPlayers[tokenId].SPD < maxs[_soccerPlayers[tokenId].positionType].SPD); //, "SPD skill cannot be developed further.");
+        require(skill == 2 && _soccerPlayers[tokenId].DRI < maxs[_soccerPlayers[tokenId].positionType].DRI); //, "DRI skill cannot be developed further.");
+        require(skill == 3 && _soccerPlayers[tokenId].PAS < maxs[_soccerPlayers[tokenId].positionType].PAS); //, "PAS skill cannot be developed further.");
+        require(skill == 4 && _soccerPlayers[tokenId].SHO < maxs[_soccerPlayers[tokenId].positionType].SHO); //, "SHO skill cannot be developed further.");
+        require(skill == 5 && _soccerPlayers[tokenId].STR < maxs[_soccerPlayers[tokenId].positionType].STR); //, "STR skill cannot be developed further.");
+        require(skill == 6 && _soccerPlayers[tokenId].DEF < maxs[_soccerPlayers[tokenId].positionType].DEF); //, "DEF skill cannot be developed further.");
+        require(_soccerPlayers[tokenId].training == 0); //,"your player already in training");
         SpendRCET(trainingPrice);
         _soccerPlayers[tokenId].trainingBeginDate = block.timestamp;
         _soccerPlayers[tokenId].training = skill;
@@ -177,8 +156,8 @@ contract MSCPlayers {
 
     function finishTraining(uint256 tokenId) external
     {
-        require(_tokenOwners[tokenId] == msg.sender, "This player is not your!");
-        require(block.timestamp >= _soccerPlayers[tokenId].trainingBeginDate + 1 days,"training end date has not passed yet!");
+        require(_tokenOwner[tokenId] == msg.sender); //, "This player is not your!");
+        require(block.timestamp >= _soccerPlayers[tokenId].trainingBeginDate + 1 days); //,"training end date has not passed yet!");
         if (_soccerPlayers[tokenId].training == 1) _soccerPlayers[tokenId].SPD +=1;
         if (_soccerPlayers[tokenId].training == 2) _soccerPlayers[tokenId].DRI +=1;
         if (_soccerPlayers[tokenId].training == 3) _soccerPlayers[tokenId].PAS +=1;
@@ -191,7 +170,7 @@ contract MSCPlayers {
     function sendSpecialTraining(uint256 tokenId, uint8 ability) external
     {
         require(ability < 2, "skill is between 0-2");
-        require(_tokenOwners[tokenId] == msg.sender, "This player is not your!");
+        require(_tokenOwner[tokenId] == msg.sender, "This player is not your!");
         require(block.timestamp >= _soccerPlayers[tokenId].trainingBeginDate + 1 days,"training end date has not passed yet!");
         require( _soccerPlayers[tokenId].abilities[ability] < 21,"This ability cannot be developed further.");
         SpendRCET(abilityPrice);
@@ -201,7 +180,7 @@ contract MSCPlayers {
 
     function finishSpecialTraining(uint256 tokenId) external
     {
-        require(_tokenOwners[tokenId] == msg.sender, "This player is not your!");
+        require(_tokenOwner[tokenId] == msg.sender, "This player is not your!");
         require(block.timestamp >= _soccerPlayers[tokenId].trainingBeginDate + 1 days, "training end date has not passed yet!");
         if (_soccerPlayers[tokenId].training == 7) _soccerPlayers[tokenId].abilities[0] +=1;
         if (_soccerPlayers[tokenId].training == 8) _soccerPlayers[tokenId].abilities[1] +=1;
@@ -234,7 +213,7 @@ contract MSCPlayers {
     }
 
     function ownerOf(uint256 tokenId) external view returns (address) {
-        address owner = _tokenOwners[tokenId];
+        address owner = _tokenOwner[tokenId];
         require(owner != address(0), "ERC721: owner query for nonexistent token");
         return owner;
     }
@@ -242,10 +221,10 @@ contract MSCPlayers {
     function _transfer(address from, address to, uint256 tokenId) internal {
         _balances[from] -= 1;
         _balances[to] += 1;
-        _tokenOwners[tokenId] = to;
-        uint256[] storage toTokens = _ownerToken[to];
+        _tokenOwner[tokenId] = to;
+        uint256[] storage toTokens = _ownerTokens[to];
         toTokens.push(tokenId);
-        uint256[] storage fromTokens = _ownerToken[from];
+        uint256[] storage fromTokens = _ownerTokens[from];
         if (fromTokens.length == 1) fromTokens.pop();
         else if (fromTokens[fromTokens.length -1] == tokenId) fromTokens.pop();
         else for (uint8 i = 0; i < fromTokens.length; i++) 
@@ -254,51 +233,114 @@ contract MSCPlayers {
             {
                 fromTokens[i] = fromTokens[fromTokens.length - 1];
                 fromTokens.pop();
+                break;
             }
         }
 
         emit Transfer(from, to, tokenId);
     }
+    
+
+    function setClubTokenPrice(uint256 tokenId, uint256 price) external 
+    {
+        require(_tokenOwner[tokenId] == msg.sender, "this club is not yours");
+        _playerTokenPrice[tokenId] = price;
+    }
+
+    function setClubEthPrice(uint256 tokenId, uint256 price) external 
+    {
+        require(_tokenOwner[tokenId] == msg.sender, "this club is not yours");
+        _playerEthPrice[tokenId] = price;
+    }
+
+    function getPlayerTokenPrice(uint256 tokenId) public view returns(uint256) {return _playerTokenPrice[tokenId];}
+    function getPlayerEthPrice(uint256 tokenId) public view returns(uint256) {return _playerEthPrice[tokenId];}
+
+    function buyPlayer(address to, uint256 tokenId) external payable returns(bool)
+    {
+        require(getPlayerEthPrice(tokenId) > 0 || getPlayerTokenPrice(tokenId) > 0); //, "club is not open for sale");
+        require(msg.value >= getPlayerEthPrice(tokenId)); //, "eth not enaught");
+        iRCET.spend(msg.sender,getPlayerTokenPrice(tokenId));
+        iRCET.earn(_tokenOwner[tokenId], getPlayerTokenPrice(tokenId) / 100 * 85);
+        payable(_tokenOwner[tokenId]).transfer(msg.value / 100 * 80);
+        playerValues storage player = _soccerPlayers[tokenId];
+        iRCET.earn(player.creator, getPlayerTokenPrice(tokenId) / 100 * 10);
+        payable(player.creator).transfer(getPlayerEthPrice(tokenId) / 100 * 10);
+        _transfer(_tokenOwner[tokenId], to, tokenId);
+        return true;
+    }
 
     function _exists(uint256 tokenId) internal view returns (bool) {
-        return _tokenOwners[tokenId] != address(0);
+        return _tokenOwner[tokenId] != address(0);
     }
 
     // Sadece sahibinin çağırabileceği bir modifier
     modifier onlyOwner() {
-        require(msg.sender == _owner, "ERC721: Only the contract owner can call this function");
+        require(msg.sender == _owner); //, "ERC721: Only the contract owner can call this function");
         _;
     }
 
+    function getCountryPlayers(uint8 cc) external view returns(uint256[] memory)
+    {
+        return countryPlayer[cc];
+    } 
+
     // Yeni bir token yaratıp sahibini belirleyen mint fonksiyonu
     function mint(uint8 positionType, string memory playerName, uint8 number, uint8 countryCode) external  {
-        require(msg.sender != address(0), "ERC721: mint to the zero address");
-        require(positionType >= 0 && positionType < 6 , "Incorrect Position");
-        require(countryCode < 50, "Incorrect country");
-        require(_playerNames[playerName] == 0, "playerName is already used");
+        require(msg.sender != address(0)); //, "ERC721: mint to the zero address");
+        require(positionType >= 0 && positionType < 6); // , "Incorrect Position");
+        require(countryCode < 48); //, "Incorrect country");
+        require(_playerNames[playerName] == 0); //, "playerName is already used");
+        require(countryPlayer[countryCode].length < 1600); //, "this country has 1600 soccer player");
         SpendRCET(100*(10**9));
 
         uint256 tokenId = _tokenIdCounter;
-        _soccerPlayers[tokenId].country = countryCode;
-        _soccerPlayers[tokenId].year = year;
-        _soccerPlayers[tokenId].number = number;
-        _soccerPlayers[tokenId].creator = msg.sender;
-        _soccerPlayers[tokenId].playerName = playerName;
-        _soccerPlayers[tokenId].positionType = positionType;
-        _soccerPlayers[tokenId].SPD = defaults[positionType].SPD;
-        _soccerPlayers[tokenId].DRI = defaults[positionType].DRI;
-        _soccerPlayers[tokenId].PAS = defaults[positionType].PAS;
-        _soccerPlayers[tokenId].SHO = defaults[positionType].SHO;
-        _soccerPlayers[tokenId].STR = defaults[positionType].STR;
-        _soccerPlayers[tokenId].DEF = defaults[positionType].DEF;
-        uint8[] storage pAbilities = _soccerPlayers[tokenId].abilities;
-        pAbilities.push(0);
-        pAbilities.push(0);
+        // _soccerPlayers[tokenId].country = countryCode;
+        // _soccerPlayers[tokenId].year = iMSCL.getYear();
+        // _soccerPlayers[tokenId].number = number;
+        // _soccerPlayers[tokenId].creator = msg.sender;
+        // _soccerPlayers[tokenId].playerName = playerName;
+        // _soccerPlayers[tokenId].positionType = positionType;
+        // _soccerPlayers[tokenId].SPD = defaults[positionType].SPD;
+        // _soccerPlayers[tokenId].DRI = defaults[positionType].DRI;
+        // _soccerPlayers[tokenId].PAS = defaults[positionType].PAS;
+        // _soccerPlayers[tokenId].SHO = defaults[positionType].SHO;
+        // _soccerPlayers[tokenId].STR = defaults[positionType].STR;
+        // _soccerPlayers[tokenId].DEF = defaults[positionType].DEF;
+        // uint8[] storage pAbilities = _soccerPlayers[tokenId].abilities;
+        // pAbilities.push(0);
+        // pAbilities.push(0);
+        _soccerPlayers[tokenId] = playerValues({
+            trainingBeginDate: 0,
+            training :0,
+            country: countryCode,
+            year: iMSCL.getYear(),
+            number: number,
+            creator: msg.sender,
+            playerName: playerName,
+            positionType: positionType,
+            SPD: defaults[positionType].SPD,
+            DRI: defaults[positionType].DRI,
+            PAS: defaults[positionType].PAS,
+            SHO: defaults[positionType].SHO,
+            STR: defaults[positionType].STR,
+            DEF: defaults[positionType].DEF,
+            abilities: new uint8[](2),
+            oldClubs: new uint256[](0), // Initialize empty dynamic array
+            club: 0,
+            clubName: "",
+            transferValue: 0,
+            transferYear: 0,
+            currentValue: 0,
+            matchCounter: 0,
+            goalCounter: 0
+        });
+        countryPlayer[countryCode].push(tokenId);
         
 
         _balances[msg.sender] += 1;
-        _tokenOwners[tokenId] = msg.sender;
-        uint256[] storage userTokens = _ownerToken[msg.sender]; 
+        _tokenOwner[tokenId] = msg.sender;
+        uint256[] storage userTokens = _ownerTokens[msg.sender]; 
         userTokens.push(tokenId);
         _playerNames[playerName] = tokenId;
         _tokenIdCounter += 1;
@@ -323,7 +365,7 @@ contract MSCPlayers {
         return msg.sender;
     }
 
-    function settrainingPrice(uint256 newPrice) external onlyOwner {
+    function setTrainingPrice(uint256 newPrice) external onlyOwner {
         trainingPrice = newPrice;
     }
 
@@ -350,14 +392,67 @@ contract MSCPlayers {
         maxs[positionType].DEF = valuesMax[5];
     }
 
-    function getPlayer(uint256 tokenId) external view returns(playerValues memory)
+    function getPlayer(uint256 tokenId) external view returns(uint16,uint16,uint8[3] memory)
     {
-        return _soccerPlayers[tokenId];
+        playerValues memory p = _soccerPlayers[tokenId];
+        uint8 ABI1 = p.abilities[0] * 10;
+        uint8 ABI2 = p.abilities[1] * 10;
+        uint8 pos = p.positionType;
+        uint16 SHO = p.SHO * 100; //60
+        uint16 STR = p.STR * 100; //60
+        uint16 SPD = p.SPD * 100; //70
+        uint16 PAS = p.PAS * 100; //75
+        uint16 DRI = p.DRI * 100; //70
+        uint16 DEF = p.DEF * 100; //65
+        if (pos == 1) {DRI+= ABI2; SPD+=ABI1;}
+        if (pos == 2) {DRI+= ABI1; PAS+=ABI2;}
+        if (pos == 3) {PAS+= ABI1; DRI+=ABI2;}
+        if (pos == 4) {DEF+= ABI1; DRI+=ABI2;}
+        uint16 attack= SHO + STR + SPD + PAS; uint16 defance= DRI + DEF + DEF + STR;
+        uint8[3] memory ar = [pos,ABI1,ABI2];
+        return(attack , defance, ar);
     }
 
     //check allowance contract
-    function isAllowanceContract(address contractAddress) external view returns(bool)
+    function isAllowanceContract() private view returns(bool)
     {
-        return iRCET.isAllowanceContract(contractAddress) || address(iRCET) == contractAddress;
+        return iRCET.isAllowanceContract(msg.sender) || address(iRCET) == msg.sender;
+    }
+
+    function addGoal(uint256 player, uint8 goalCounter) external returns(bool)
+    {
+        require(isAllowanceContract(),"Can not use this method");
+        _soccerPlayers[player].goalCounter += goalCounter;
+        _soccerPlayers[player].matchCounter += 1;
+        return true;
+    } 
+
+    function isHasClub(uint256 player) external view returns(bool)
+    {
+        return _soccerPlayers[player].transferYear < iMSCL.getYear();
+    }
+
+    function acceptPlayerClub(uint256 player, uint256 club, uint256 index) external returns(bool)
+    {
+        require(isAllowanceContract(),"Can not use this method");
+        require(_soccerPlayers[player].transferYear < iMSCL.getYear(),"player already has a club");
+        require(iMSCC.isHasOffer(player, club, index),"offer can not found");
+        require(iMSCL.getWeek() < 5 , "you can accept offer only first 4 week");
+        require(!iMSCC.isFull(club), "club already has 16 players");
+        
+        iMSCC.acceptOffer(player, _tokenOwner[player], club, index);
+        uint256[] storage oldClubs = _soccerPlayers[player].oldClubs;
+        oldClubs.push(_soccerPlayers[player].club);
+        _soccerPlayers[player].club = club;
+        _soccerPlayers[player].transferYear = iMSCL.getYear();
+        return true;
+    }
+
+    function rejectPlayerClub(uint256 player, uint256 club, uint256 index) external returns(bool)
+    {
+        require(isAllowanceContract(),"Can not use this method");
+        require(iMSCC.isHasOffer(player, club, index),"offer can not found");
+        iMSCC.rejectOffer(player, club, index);
+        return true;
     }
 }

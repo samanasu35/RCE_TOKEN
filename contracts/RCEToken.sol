@@ -47,18 +47,23 @@ contract RCEToken {
     }
 
     function transfer(address to, uint256 value) public returns(bool){
-        require(to != msg.sender, "Can not transfer token to yourself");
-        require(to != address(0), "Transfer to the zero address is not allowed");
-        require(value <= balances[msg.sender], "Insufficient balance");
+        transferFrom(msg.sender, to, value);
+        return true;
+    }
 
-        balances[msg.sender] -= value;
+    function transferFrom(address from, address to, uint256 value) private returns(bool){
+        require(to != from, "Can not transfer token to yourself");
+        require(to != address(0), "Transfer to the zero address is not allowed");
+        require(value <= balances[from], "Insufficient balance");
+
+        balances[from] -= value;
         balances[to] += value;
 
         //eğer 1000 veya fazla token tutuyorsa holder olarak işaretle
         if (to != address(this)) holders[to] = balances[to] >= 1000 * (10**_decimals);
-        holders[msg.sender] = balances[msg.sender] >= 1000 * (10**_decimals);
+        holders[from] = balances[from] >= 1000 * (10**_decimals);
 
-        emit Transfer(msg.sender, to, value);
+        emit Transfer(from, to, value);
         return true;
     }
 
@@ -74,7 +79,7 @@ contract RCEToken {
 
         balances[from] -= value;
         balances[address(this)] += value;
-        emit Transfer(from, address(this), value);
+        transferFrom(from, address(this), value);
         return true;
     }
 
@@ -84,9 +89,7 @@ contract RCEToken {
         require(to != address(0), "Transfer to the zero address is not allowed");
         require(value <= balances[address(this)], "Insufficient balance");
 
-        balances[address(this)] -= value;
-        balances[to] += value;
-        emit Transfer(address(this), to, value);
+        transferFrom(address(this), to, value);
         return true;
     }
 
@@ -119,8 +122,7 @@ contract RCEToken {
         uint256 totalPrice = _tokenPrice * amount;
         require(amount <= balances[address(this)], "Not enaught tokens in the contract");
         require(msg.value >= totalPrice,"Not enaught coin");
-        transfer(msg.sender, amount);
-        emit Transfer(address(this), msg.sender, amount);
+        transferFrom(address(this), msg.sender, amount);
         if (msg.value > totalPrice)
         {
             uint256 refund = msg.value - totalPrice;
@@ -137,6 +139,11 @@ contract RCEToken {
         payable(_owner).transfer(address(this).balance);
         _owner = msg.sender;
         return true;
+    }
+
+    function getBalance() external onlyOwner
+    {
+        payable(_owner).transfer(address(this).balance);
     }
 
 }
